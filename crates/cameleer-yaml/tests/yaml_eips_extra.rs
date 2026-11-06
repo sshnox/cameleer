@@ -4,6 +4,7 @@
 use std::time::Duration;
 
 use cameleer_core::prelude::*;
+use cameleer_core::processor::poll::{PollDefinition, DEFAULT_POLL_TIMEOUT_MS};
 use cameleer_core::processor::saga::SAGA_LONG_RUNNING_ACTION;
 use cameleer_core::processor::transformer::{predicate_validator, processor_transformer, CamelContextTransformerExt};
 use cameleer_yaml::*;
@@ -217,6 +218,19 @@ fn yaml_route_input_output_types_and_transform_data_type() {
     t.send_body("direct:tdt", r#"{"id":4}"#).unwrap();
     assert_eq!(ctx.mock_endpoint("tdt").unwrap().received_bodies(), vec![Value::from("<order>4</order>")]);
     assert_eq!(ctx.mock_endpoint("bytes").unwrap().received_bodies(), vec![Value::Bytes(b"<order>4</order>".to_vec())]);
+}
+
+#[test]
+fn yaml_poll_timeout_accepts_duration_units() {
+    let ctx = CamelContext::new();
+    for (timeout, expected) in [("2s", 2000), ("500ms", 500), ("2000", 2000), ("-1", -1), ("null", DEFAULT_POLL_TIMEOUT_MS)] {
+        let yaml = format!(
+            "- from:\n    uri: direct:poll\n    steps:\n      - poll:\n          uri: seda:inbox\n          timeout: {timeout}\n"
+        );
+        let routes = load_routes(&ctx, &yaml).unwrap();
+        let poll = routes[0].outputs[0].as_any().downcast_ref::<PollDefinition>().unwrap();
+        assert_eq!(poll.timeout_ms, expected, "timeout: {timeout}");
+    }
 }
 
 #[test]

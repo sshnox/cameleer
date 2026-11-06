@@ -8,6 +8,7 @@ use cameleer_core::processor::saga::{SagaCompletionMode, SagaDefinition, SagaPro
 use cameleer_core::processor::script::ScriptDefinition;
 use cameleer_core::processor::service_call::{DiscoveryConfig, FilterConfig, ServiceCallDefinition, ServiceDefinition, ServiceLoadBalancer};
 use cameleer_core::processor::transformer::TransformDataTypeDefinition;
+use cameleer_core::util::parse_duration;
 
 use super::eips::{ref_name, string_list, unwrap_item, val_duration, val_i64, val_str};
 use super::*;
@@ -26,6 +27,16 @@ pub(super) fn register_extra_steps(r: &mut StepRegistry) {
         let uri = ctx.uri(cfg)?;
         let timeout = match cfg.get("timeout") {
             None | Some(Value::Null) => DEFAULT_POLL_TIMEOUT_MS,
+            Some(v @ Value::String(_)) => {
+                let timeout = val_str(ctx.camel(), v).map_err(|e| ctx.error(e.message))?;
+                match timeout.trim().parse::<i64>() {
+                    Ok(millis) => millis,
+                    Err(_) => {
+                        let duration = parse_duration(&timeout).map_err(|e| ctx.error(e.message))?;
+                        i64::try_from(duration.as_millis()).map_err(|_| ctx.error("timeout exceeds i64 milliseconds"))?
+                    }
+                }
+            }
             Some(v) => val_i64(ctx.camel(), v).map_err(|e| ctx.error(e.message))?,
         };
         ctx.add(Box::new(PollDefinition::new(uri, timeout)));
